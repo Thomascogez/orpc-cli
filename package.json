@@ -43,6 +43,11 @@
 	"author": "",
 	"license": "MIT",
 	"packageManager": "pnpm@10.33.0",
+	"dependencies": {
+		"bundle-require": "^5.1.0",
+		"esbuild": "^0.25.0",
+		"ts-morph": "^27.0.2"
+	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.10",
 		"@changesets/cli": "^2.30.0",
@@ -52,9 +57,6 @@
 		"@standard-schema/spec": "^1.1.0",
 		"@types/json-schema": "^7.0.15",
 		"@types/node": "^25.5.2",
-		"bundle-require": "^5.1.0",
-		"esbuild": "^0.25.0",
-		"ts-morph": "^27.0.2",
 		"tsdown": "^0.21.7",
 		"tsx": "^4.21.0",
 		"typescript": "^6.0.2",

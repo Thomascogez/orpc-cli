@@ -7,6 +7,16 @@ settings:
 importers:
 
   .:
+    dependencies:
+      bundle-require:
+        specifier: ^5.1.0
+        version: 5.1.0(esbuild@0.25.12)
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.12
+      ts-morph:
+        specifier: ^27.0.2
+        version: 27.0.2
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.4.10
@@ -32,15 +42,6 @@ importers:
       '@types/node':
         specifier: ^25.5.2
         version: 25.5.2
-      bundle-require:
-        specifier: ^5.1.0
-        version: 5.1.0(esbuild@0.25.12)
-      esbuild:
-        specifier: ^0.25.0
-        version: 0.25.12
-      ts-morph:
-        specifier: ^27.0.2
-        version: 27.0.2
       tsdown:
         specifier: ^0.21.7
         version: 0.21.7(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(typescript@6.0.2)

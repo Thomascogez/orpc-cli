@@ -2,7 +2,7 @@
  * orpc-cli configuration for Cloudflare Workers example
  */
 
-import { defineConfig } from "orpc-cli/config";
+import { defineConfig } from "@thomas.ca/orpc-cli/config";
 import { router } from "./router.ts";
 
 export default defineConfig({

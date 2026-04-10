@@ -28,9 +28,14 @@ npx tsx cli.ts users list --limit 10
 ## Installation
 
 ```bash
+# Install as a dev dependency (requires runtime deps: esbuild, bundle-require)
 npm install -D @thomas.ca/orpc-cli
+
+# Required peer dependencies
 npm install @drizzle-team/brocli @orpc/client
 ```
+
+> **Note:** This package requires runtime dependencies (`esbuild`, `bundle-require`). It must be installed before running and cannot be used directly with `npx` without first installing.
 
 ## Quick Start
 

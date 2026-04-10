@@ -3,7 +3,7 @@
  *
  * @example
  * ```typescript
- * import { defineConfig } from "orpc-cli/config";
+ * import { defineConfig } from "@thomas.ca/orpc-cli/config";
  * import { router } from "./src/router";
  *
  * export default defineConfig({

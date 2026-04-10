@@ -6,5 +6,15 @@ export default defineConfig({
 	sourcemap: false,
 	dts: true,
 	format: ["esm"],
-	noExternal: [], // Allow bundling of @orpc/* packages if needed at build time
+	deps: {
+		neverBundle: [
+			"esbuild",
+			"bundle-require",
+			"ts-morph",
+			"@orpc/server",
+			"@orpc/client",
+			"@standard-schema/spec",
+			"@types/json-schema",
+		],
+	},
 });
