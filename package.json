@@ -1,6 +1,6 @@
 {
-	"name": "orpc-cli",
-	"version": "1.0.0",
+	"name": "@thomas.ca/orpc-cli",
+	"version": "0.0.1",
 	"description": "Generate command-line interfaces from oRPC routers and clients using Standard Schema",
 	"type": "module",
 	"main": "./dist/index.js",
@@ -45,6 +45,7 @@
 	"packageManager": "pnpm@10.33.0",
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.10",
+		"@changesets/cli": "^2.30.0",
 		"@drizzle-team/brocli": "^0.12.0",
 		"@orpc/client": "^1.13.13",
 		"@orpc/server": "^1.13.13",
