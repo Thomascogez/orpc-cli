@@ -1,18 +1,18 @@
-# orpc-cli
+# @thomas.ca/orpc-cli
 
-[![npm version](https://img.shields.io/npm/v/orpc-cli)](https://www.npmjs.com/package/orpc-cli)
+[![npm version](https://img.shields.io/npm/v/@thomas.ca/orpc-cli)](https://www.npmjs.com/package/@thomas.ca/orpc-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Generate a type-safe CLI HTTP client from your oRPC router. Perfect for AI agents and developers who love command-line tools.
 
-> **What it does:** orpc-cli introspects your oRPC router at build time and generates [`@drizzle-team/brocli`](https://github.com/drizzle-team/brocli) command definitions. You bring your own oRPC client—we generate the command structure, not the full CLI.
+> **What it does:** @thomas.ca/orpc-cli introspects your oRPC router at build time and generates [`@drizzle-team/brocli`](https://github.com/drizzle-team/brocli) command definitions. You bring your own oRPC client—we generate the command structure, not the full CLI.
 
 ## TL;DR
 
 Turn your oRPC router into a CLI HTTP client. Define routes, generate brocli commands, and start making HTTP requests from the terminal. Your server code stays on the server—only the command structure is generated.
 
 ```bash
-npx orpc-cli generate
+npx @thomas.ca/orpc-cli generate
 npx tsx cli.ts users list --limit 10
 ```
 
@@ -28,13 +28,13 @@ npx tsx cli.ts users list --limit 10
 ## Installation
 
 ```bash
-npm install -D orpc-cli
+npm install -D @thomas.ca/orpc-cli
 npm install @drizzle-team/brocli @orpc/client
 ```
 
 ## Quick Start
 
-orpc-cli generates **brocli command definitions**—not a complete CLI. You create the entry point, we generate the commands.
+@thomas.ca/orpc-cli generates **brocli command definitions**—not a complete CLI. You create the entry point, we generate the commands.
 
 ### 1. Define your router
 
@@ -67,7 +67,7 @@ export type AppRouter = typeof router;
 
 ```ts
 // orpc-cli.config.ts
-import { defineConfig } from "orpc-cli/config";
+import { defineConfig } from "@thomas.ca/orpc-cli/config";
 import { router } from "./router.ts";
 
 export default defineConfig({
@@ -79,7 +79,7 @@ export default defineConfig({
 ### 3. Generate CLI
 
 ```bash
-npx orpc-cli generate
+npx @thomas.ca/orpc-cli generate
 ```
 
 ### 4. Create CLI entry point
@@ -118,7 +118,7 @@ npx tsx cli.ts users create --name "Alice" --email "alice@example.com"
 │  orpc-cli.config.ts                                            │
 │  └── Router imported and introspected                          │
 │                                                                │
-│  npx orpc-cli generate                                         │
+│  npx @thomas.ca/orpc-cli generate                                         │
 │  ├── bundle-require loads config (esbuild + virtual modules)   │
 │  ├── Platform stubs: cloudflare:workers → { env: Proxy }       │
 │  ├── tsconfig paths resolved automatically                     │
@@ -169,7 +169,7 @@ API_TOKEN=abc123 npx tsx cli.ts users list --limit 10
 
 ## Platform-Specific Imports
 
-orpc-cli stubs platform modules during config loading via an esbuild plugin. This means you can import Cloudflare Workers bindings in your router without issues:
+@thomas.ca/orpc-cli stubs platform modules during config loading via an esbuild plugin. This means you can import Cloudflare Workers bindings in your router without issues:
 
 ```ts
 // router.ts
@@ -197,7 +197,7 @@ Supported stubs:
 ### `defineConfig(options)`
 
 ```ts
-import { defineConfig } from "orpc-cli/config";
+import { defineConfig } from "@thomas.ca/orpc-cli/config";
 
 defineConfig({
   // Required: Your oRPC router
@@ -210,7 +210,7 @@ defineConfig({
 
 ## Generated Code
 
-orpc-cli generates a `buildCommands(client)` function that returns [`@drizzle-team/brocli`](https://github.com/drizzle-team/brocli) command definitions. You wire these commands into your own CLI entry point.
+@thomas.ca/orpc-cli generates a `buildCommands(client)` function that returns [`@drizzle-team/brocli`](https://github.com/drizzle-team/brocli) command definitions. You wire these commands into your own CLI entry point.
 
 **What gets generated:**
 
@@ -333,7 +333,7 @@ $ mycli events subscribe
 
 ## CLI Reference
 
-### `npx orpc-cli generate`
+### `npx @thomas.ca/orpc-cli generate`
 
 Generate CLI code from your configuration.
 
