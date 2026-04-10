@@ -3,9 +3,9 @@
  * Used to test module stubbing
  */
 
+import { env } from "cloudflare:workers";
 import { os } from "@orpc/server";
 import { z } from "zod";
-import { env } from "cloudflare:workers";
 
 // This router imports cloudflare:workers but the import is stubbed during introspection
 export const router = {

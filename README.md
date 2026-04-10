@@ -1,16 +1,29 @@
 # orpc-cli
 
-Generate command-line interfaces from oRPC routers and clients using Standard Schema.
+[![npm version](https://img.shields.io/npm/v/orpc-cli)](https://www.npmjs.com/package/orpc-cli)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+Generate a type-safe CLI HTTP client from your oRPC router. Perfect for AI agents and developers who love command-line tools.
+
+> **What it does:** orpc-cli introspects your oRPC router at build time and generates [`@drizzle-team/brocli`](https://github.com/drizzle-team/brocli) command definitions. You bring your own oRPC client—we generate the command structure, not the full CLI.
+
+## TL;DR
+
+Turn your oRPC router into a CLI HTTP client. Define routes, generate brocli commands, and start making HTTP requests from the terminal. Your server code stays on the server—only the command structure is generated.
+
+```bash
+npx orpc-cli generate
+npx tsx cli.ts users list --limit 10
+```
 
 ## Features
 
-- 🔥 **Build-time code generation** - Router is only used at build time, not bundled into CLI
-- 📦 **Standard Schema support** - Works with Zod, Valibot, ArkType, and any Standard Schema library
-- 🎯 **Type-safe** - Full TypeScript support with generated types
-- 🌲 **Nested commands** - Automatic subcommands for nested routers
-- ⚡ **Fast** - Uses c12 for fast TypeScript config loading
-- 🚀 **Built with brocli** - Both orpc-cli itself and generated CLIs use brocli
-- 🔄 **Platform module stubbing** - Works with `cloudflare:workers`, `deno`, and other platform-specific imports
+- **Build-time code generation** — Router is introspected at build time, never bundled into the CLI
+- **Nested subcommands** — Supports arbitrary depth (e.g., `inbox.message.list`)
+- **Platform import stubbing** — Works with `cloudflare:workers`, `deno`, and other platform-specific imports via esbuild plugin
+- **tsconfig paths** — Automatically resolved via esbuild
+- **SSE streaming** — Detects async iterators and streams output with timestamps
+- **Standard Schema** — Works with Zod, Valibot, ArkType, and any Standard Schema library
 
 ## Installation
 
@@ -21,9 +34,11 @@ npm install @drizzle-team/brocli @orpc/client
 
 ## Quick Start
 
-### 1. Create your oRPC router
+orpc-cli generates **brocli command definitions**—not a complete CLI. You create the entry point, we generate the commands.
 
-```typescript
+### 1. Define your router
+
+```ts
 // router.ts
 import { os } from "@orpc/server";
 import { z } from "zod";
@@ -48,29 +63,28 @@ export const router = {
 export type AppRouter = typeof router;
 ```
 
-### 2. Create `orpc-cli.config.ts`
+### 2. Create config
 
-```typescript
+```ts
+// orpc-cli.config.ts
 import { defineConfig } from "orpc-cli/config";
 import { router } from "./router.ts";
 
 export default defineConfig({
   router,
-  output: ".orpc-cli",  // Output directory for generated code
+  output: ".orpc-cli",
 });
 ```
 
-### 3. Generate CLI commands
+### 3. Generate CLI
 
 ```bash
 npx orpc-cli generate
 ```
 
-This creates `.orpc-cli/index.ts` with a `buildCommands(client)` function.
+### 4. Create CLI entry point
 
-### 4. Create your CLI entry point
-
-```typescript
+```ts
 // cli.ts
 import { run } from "@drizzle-team/brocli";
 import { createORPCClient } from "@orpc/client";
@@ -81,256 +95,85 @@ const client = createORPCClient<AppRouter>({
   baseURL: "http://localhost:3000/api",
 });
 
-const commands = buildCommands(client);
-
-run(commands, {
+run(buildCommands(client), {
   name: "mycli",
   description: "My generated CLI",
   version: "1.0.0",
 });
 ```
 
-### 5. Run your CLI
+### 5. Run CLI
 
 ```bash
 npx tsx cli.ts users list --limit 10
 npx tsx cli.ts users create --name "Alice" --email "alice@example.com"
 ```
 
+## How It Works
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                        Build Time                               │
+├────────────────────────────────────────────────────────────────┤
+│  orpc-cli.config.ts                                            │
+│  └── Router imported and introspected                          │
+│                                                                │
+│  npx orpc-cli generate                                         │
+│  ├── bundle-require loads config (esbuild + virtual modules)   │
+│  ├── Platform stubs: cloudflare:workers → { env: Proxy }       │
+│  ├── tsconfig paths resolved automatically                     │
+│  ├── Router structure analyzed (no handlers executed)          │
+│  └── .orpc-cli/index.ts generated                              │
+└────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌────────────────────────────────────────────────────────────────┐
+│                       Runtime (Your CLI)                        │
+├────────────────────────────────────────────────────────────────┤
+│  cli.ts                                                        │
+│  ├── import { buildCommands } from "./.orpc-cli/index.ts"      │
+│  ├── @orpc/client (no server code)                             │
+│  └── buildCommands(client) → brocli commands                   │
+└────────────────────────────────────────────────────────────────┘
+```
+
+Key points:
+
+- Router is **never bundled** into your CLI
+- Platform imports are **stubbed** via esbuild plugin (no temp files)
+- Handlers are **not executed** during introspection
+- tsconfig paths are **auto-resolved** via esbuild
+
 ## Authentication
 
-The generated CLI passes all command-line options to the oRPC client context, allowing you to handle authentication in your client setup:
+Use environment variables to authenticate your CLI HTTP client:
 
-```typescript
+```ts
 // cli.ts
-import { run } from "@drizzle-team/brocli";
-import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
-import { buildCommands } from "./.orpc-cli/index.js";
 
 const link = new RPCLink({
   url: 'http://localhost:3000/api',
-  headers: ({ context }) => {
-    // Access CLI options via context.options
-    const token = context?.options?.token || process.env.API_TOKEN;
-    return {
-      authorization: token ? `Bearer ${token}` : undefined,
-    };
+  headers: {
+    authorization: process.env.API_TOKEN ? `Bearer ${process.env.API_TOKEN}` : undefined,
   },
 });
 
 const client = createORPCClient(link);
-const commands = buildCommands(client);
-
-run(commands, { name: "mycli", version: "1.0.0" });
+run(buildCommands(client), { name: "mycli", version: "1.0.0" });
 ```
 
-Now you can pass auth tokens via CLI:
-
 ```bash
-npx tsx cli.ts users list --token abc123 --limit 10
-# Or use environment variable
 API_TOKEN=abc123 npx tsx cli.ts users list --limit 10
 ```
 
-## Output
-
-Output is formatted as pretty-printed JSON by default:
-
-```bash
-$ mycli users list --limit 10
-{
-  "users": [
-    { "id": 1, "name": "Alice" },
-    { "id": 2, "name": "Bob" }
-  ]
-}
-```
-
-### Error Handling
-
-Errors are displayed cleanly with just the error message:
-
-```bash
-$ mycli users get --id 999
-User not found
-```
-
-### Streaming / SSE Support
-
-If your procedure returns an async iterator (e.g., for Server-Sent Events), the CLI automatically detects and streams the output with timestamps:
-
-```typescript
-// In your router
-subscribe: os.handler(async function* () {
-  yield { type: "update", data: "first" };
-  yield { type: "update", data: "second" };
-})
-```
-
-```bash
-$ mycli events subscribe
-[2024-01-15T10:30:00.000Z] [1] {"type":"update","data":"first"}
-[2024-01-15T10:30:01.000Z] [2] {"type":"update","data":"second"}
-```
-
-## How It Works
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Build Time                              │
-├─────────────────────────────────────────────────────────────────┤
-│  orpc-cli.config.ts                                             │
-│  ├── imports your Router (with all server-side code)            │
-│  └── passes it to defineConfig()                                │
-│                                                                  │
-│  npx orpc-cli generate                                          │
-│  ├── creates virtual module stubs in memory                     │
-│  │   └── cloudflare:workers → { env: Proxy, ... }              │
-│  ├── loads config via c12 + jiti (TypeScript support)           │
-│  │   └── virtualModules: { "cloudflare:workers": stub }        │
-│  ├── introspects router structure & schemas                     │
-│  ├── extracts input schemas from Standard Schema                │
-│  └── generates .orpc-cli/index.ts                               │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Runtime (Your CLI)                         │
-├─────────────────────────────────────────────────────────────────┤
-│  cli.ts                                                         │
-│  ├── imports { buildCommands } from "./.orpc-cli/index.ts"     │
-│  ├── creates @orpc/client (no server code!)                     │
-│  └── buildCommands(client) → command definitions                │
-│                                                                  │
-│  npx tsx cli.ts users list                                      │
-│  └── runs the command using only the client                     │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Key points**:
-- The router is **never bundled** into your CLI - only used at build time
-- Platform-specific imports (`cloudflare:workers`, etc.) are **automatically stubbed** in memory
-- Handler code is **never executed** during introspection - only structure is analyzed
-- No temporary files - virtual modules are handled entirely in memory by jiti
-
-## Configuration
-
-### `defineConfig(options)`
-
-```typescript
-import { defineConfig } from "orpc-cli/config";
-
-defineConfig({
-  // Required: Your oRPC router
-  router: yourRouter,
-  
-  // Optional: Output directory (default: ".orpc-cli")
-  output: ".orpc-cli",
-});
-```
-
-## Generated Code
-
-The generator creates a `buildCommands(client)` function that:
-
-- Returns an array of brocli command definitions
-- One command per procedure in your router
-- Nested subcommands for nested routers
-- Options derived from your Standard Schema input types
-- Type hints and descriptions from schema `.describe()`
-
-Example output:
-
-```typescript
-// Generated by orpc-cli - DO NOT EDIT
-import { command, string, number, run } from "@drizzle-team/brocli";
-
-export const buildCommands = (client: any) => {
-  const users_list = command({
-    name: "list",
-    desc: "users.list",
-    options: {
-      limit: number("limit").desc("Maximum number of users").default(""),
-    },
-    handler: (opts) => client.users.list(opts),
-  });
-
-  const users = command({
-    name: "users",
-    desc: "users commands",
-    subcommands: [users_list],
-  });
-
-  return [users];
-};
-```
-
-## Schema Support
-
-orpc-cli supports any Standard Schema library:
-
-- **Zod**: `z.object({ ... }).describe("...")`
-- **Valibot**: `v.object({ ... })` with descriptions
-- **ArkType**: `type({ ... })` with metadata
-
-Option types are inferred from schema types:
-- `z.string()` → `--key <value>`
-- `z.number()` → `--key <number>`
-- `z.boolean()` → `--key` (flag)
-- `z.enum([...])` → `--key <value>` with choices
-- `.optional()` → optional flag
-- `.default(value)` → default value
-
-## CLI Commands
-
-orpc-cli uses **brocli** for its own command-line interface.
-
-### `npx orpc-cli generate`
-
-Generates CLI code from your configuration.
-
-```bash
-npx orpc-cli generate
-```
-
-Looks for config files in this order:
-- `orpc-cli.config.ts`
-- `orpc-cli.config.js`
-- `orpc-cli.config.mjs`
-
-**Options:**
-
-```
-      --config string   Path to config file (default: "")
-      --output string   Output directory (overrides config) (default: "")
-  -h, --help            help for generate
-  -v, --version         version for orpc-cli
-```
-
-**Aliases:** `gen`
-
-### `npx orpc-cli --help`
-
-Shows help information.
-
-### `npx orpc-cli --version`
-
-Shows version information.
-
 ## Platform-Specific Imports
 
-orpc-cli automatically stubs platform-specific modules during router introspection, so you can use:
+orpc-cli stubs platform modules during config loading via an esbuild plugin. This means you can import Cloudflare Workers bindings in your router without issues:
 
-- `cloudflare:workers` (env, ExecutionContext, etc.)
-- Other platform modules as needed
-
-This means your router can safely import Cloudflare Workers bindings, and orpc-cli will generate CLI code without issues:
-
-```typescript
-// router.ts - This works!
+```ts
+// router.ts
 import { env } from "cloudflare:workers";
-import { os } from "@orpc/server";
 
 export const router = {
   users: {
@@ -344,23 +187,180 @@ export const router = {
 };
 ```
 
-### How Module Stubbing Works
+Supported stubs:
 
-When orpc-cli loads your config file, it uses **jiti's virtualModules feature**:
+- `cloudflare:workers` — `env` (Proxy), `ExecutionContext`, `ScheduledController`
+- `deno` — empty object
 
-1. **Virtual Modules**: Platform modules like `cloudflare:workers` are stubbed with JavaScript objects
-2. **No File I/O**: Stubs exist only in memory - no temp files created
-3. **Introspection**: The router is loaded and analyzed without executing handlers
-4. **Automatic**: Works transparently with no configuration needed
+## Configuration
 
-The handlers are **never executed** during introspection - only the router structure and schemas are analyzed.
+### `defineConfig(options)`
+
+```ts
+import { defineConfig } from "orpc-cli/config";
+
+defineConfig({
+  // Required: Your oRPC router
+  router: yourRouter,
+  
+  // Optional: Output directory (default: ".orpc-cli")
+  output: ".orpc-cli",
+});
+```
+
+## Generated Code
+
+orpc-cli generates a `buildCommands(client)` function that returns [`@drizzle-team/brocli`](https://github.com/drizzle-team/brocli) command definitions. You wire these commands into your own CLI entry point.
+
+**What gets generated:**
+
+- `buildCommands(client)` — Function that takes an oRPC client and returns brocli command array
+- Command definitions with options mapped from your Standard Schema inputs
+- `processOutput()` helper — Handles JSON output and SSE streaming
+- `handleError()` helper — Consistent error formatting
+
+**What you write:**
+
+- CLI entry point (using `run()` from brocli)
+- oRPC client configuration
+- Any custom middleware or setup
+
+**Example input router:**
+
+```ts
+export const router = {
+  users: {
+    list: os
+      .input(z.object({ 
+        limit: z.number().default(10),
+        active: z.boolean().default(true)
+      }))
+      .handler(async ({ input }) => ({ users: [] })),
+  },
+};
+```
+
+**Generated output:**
+
+```ts
+// Generated by orpc-cli - DO NOT EDIT
+import { command, string, number, boolean } from "@drizzle-team/brocli";
+
+async function processOutput(result: unknown): Promise<void> {
+  // Handle async iterator / SSE streaming
+  if (result && typeof (result as AsyncIterable<unknown>)[Symbol.asyncIterator] === 'function') {
+    let index = 0;
+    for await (const event of result as AsyncIterable<unknown>) {
+      const timestamp = new Date().toISOString();
+      console.log(`[${timestamp}] [${++index}] ${JSON.stringify(event)}`);
+    }
+    return;
+  }
+  // Regular output
+  console.log(JSON.stringify(result, null, 2));
+}
+
+function handleError(error: unknown): never {
+  const msg = error instanceof Error ? error.message : String(error);
+  console.error(msg);
+  process.exit(1);
+}
+
+export const buildCommands = (client: any) => {
+  const users_list = command({
+    name: "list",
+    desc: "users.list",
+    options: {
+      limit: number("limit").desc("number").default(10),
+      active: boolean("active").desc("boolean").default(true),
+    },
+    handler: async (opts) => {
+      const { ...input } = opts;
+      try {
+        const result = await client.users.list(input, { context: { options: opts } });
+        await processOutput(result);
+      } catch (error) {
+        handleError(error);
+      }
+    },
+  });
+
+  const users = command({
+    name: "users",
+    desc: "users commands",
+    subcommands: [users_list],
+  });
+
+  return [users];
+};
+```
+
+**Key generated features:**
+
+- `processOutput()` — Handles both regular JSON and async iterator (SSE) streaming
+- `handleError()` — Clean error output with `process.exit(1)`
+- Type-safe defaults — Numbers without quotes, booleans as literals
+- Nested subcommands — Arbitrary depth supported
+
+### Output Format
+
+Regular responses are pretty-printed JSON:
+
+```bash
+$ mycli users list
+{
+  "users": [
+    { "id": 1, "name": "Alice" },
+    { "id": 2, "name": "Bob" }
+  ]
+}
+```
+
+Errors show only the message:
+
+```bash
+$ mycli users get --id 999
+User not found
+```
+
+Async iterators (SSE) are streamed with timestamps:
+
+```bash
+$ mycli events subscribe
+[2024-01-15T10:30:00.000Z] [1] {"type":"update","data":"first"}
+[2024-01-15T10:30:01.000Z] [2] {"type":"update","data":"second"}
+```
+
+## CLI Reference
+
+### `npx orpc-cli generate`
+
+Generate CLI code from your configuration.
+
+**Aliases:** `gen`
+
+**Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--cwd <path>` | Current working directory | `process.cwd()` |
+| `--output <dir>` | Output directory (overrides config) | `""` |
+
+**Config file resolution:**
+Looks for config files in order:
+
+1. `orpc-cli.config.ts`
+2. `orpc-cli.config.mts`
+3. `orpc-cli.config.js`
+4. `orpc-cli.config.mjs`
 
 ## Examples
 
-See the `examples/` directory for complete working examples:
+See the `examples/` directory:
 
-- `examples/basic/` - Simple example without platform imports
-- `examples/cloudflare/` - Example with Cloudflare Workers imports
+- **`examples/basic/`** — Simple users/posts router
+- **`examples/cloudflare/`** — Router using `cloudflare:workers` imports
+- **`examples/nested/`** — Deep nesting: `inbox.message.list`, `workspace.project.task.create`
 
 ## License
 

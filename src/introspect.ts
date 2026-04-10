@@ -5,7 +5,6 @@
 import type { JSONSchema7 } from "json-schema";
 import type { ProcedureInfo, SchemaProperty } from "./types.js";
 
-
 /**
  * Simple runtime introspection (fallback when type analysis isn't available)
  */
@@ -40,12 +39,12 @@ export const introspectRouterRuntime = (
 				// Extract input schema from Standard Schema
 				const inputSchema = orpcDef.inputSchema as
 					| {
-						"~standard"?: {
-							jsonSchema?: {
-								input: (opts: { target: string }) => JSONSchema7;
+							"~standard"?: {
+								jsonSchema?: {
+									input: (opts: { target: string }) => JSONSchema7;
+								};
 							};
-						};
-					}
+					  }
 					| undefined;
 				const schema = inputSchema?.["~standard"]?.jsonSchema?.input({
 					target: "draft-07",

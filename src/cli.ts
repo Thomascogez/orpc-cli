@@ -9,77 +9,126 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { command, run, string } from "@drizzle-team/brocli";
-import { loadConfig as loadC12Config } from "c12";
-import { createJiti } from "jiti";
+import { bundleRequire } from "bundle-require";
+import type * as esbuild from "esbuild";
 import { generateCLICode } from "./generator.js";
 import { introspectRouterRuntime } from "./introspect.js";
 import type { CLIGenConfig } from "./types.js";
 
 /**
- * Create virtual module stubs for platform-specific imports
- * Using jiti's virtualModules feature - takes actual module objects, not file paths
+ * Create esbuild plugin for virtual modules (platform-specific stubs)
  */
-const createVirtualModules = (): Record<string, unknown> => {
+const createVirtualModulesPlugin = (): esbuild.Plugin => {
 	return {
-		// Cloudflare Workers stub
-		"cloudflare:workers": {
-			env: new Proxy(
-				{},
-				{
-					get(_, prop) {
-						return undefined;
-					},
-				},
-			),
-			ExecutionContext: class ExecutionContext {
-				waitUntil(): void { }
-				passThroughOnException(): void { }
-			},
-			ScheduledController: class ScheduledController {
-				constructor(
-					readonly scheduledTime: number,
-					readonly cron: string,
-				) { }
-			},
-		},
-		// Deno stub (if needed in future)
-		deno: {
-			default: {},
+		name: "virtual-modules",
+		setup(build) {
+			// Cloudflare Workers stub
+			build.onResolve({ filter: /^cloudflare:workers$/ }, (args) => ({
+				path: args.path,
+				namespace: "virtual-module",
+			}));
+
+			build.onLoad(
+				{ filter: /^cloudflare:workers$/, namespace: "virtual-module" },
+				() => ({
+					contents: `
+					export const env = new Proxy({}, {
+						get(_, prop) {
+							return undefined;
+						}
+					});
+					export class ExecutionContext {
+						waitUntil() {}
+						passThroughOnException() {}
+					}
+					export class ScheduledController {
+						constructor(scheduledTime, cron) {
+							this.scheduledTime = scheduledTime;
+							this.cron = cron;
+						}
+					}
+				`,
+					loader: "js",
+				}),
+			);
+
+			// Deno stub (if needed in future)
+			build.onResolve({ filter: /^deno$/ }, (args) => ({
+				path: args.path,
+				namespace: "virtual-module",
+			}));
+
+			build.onLoad({ filter: /^deno$/, namespace: "virtual-module" }, () => ({
+				contents: `export default {};`,
+				loader: "js",
+			}));
 		},
 	};
 };
 
 /**
- * Load config using c12 with jiti for TypeScript support and platform module stubbing
+ * Find config file path
+ */
+const findConfigFile = async (cwd: string): Promise<string | null> => {
+	const configFiles = [
+		"orpc-cli.config.ts",
+		"orpc-cli.config.mts",
+		"orpc-cli.config.js",
+		"orpc-cli.config.mjs",
+	];
+
+	for (const file of configFiles) {
+		const fullPath = path.join(cwd, file);
+		try {
+			await fs.access(fullPath);
+			return fullPath;
+		} catch { }
+	}
+
+	return null;
+};
+
+/**
+ * Load config using bundle-require with TypeScript support and platform module stubbing
  */
 const loadConfig = async (options?: {
 	cwd?: string;
 }): Promise<CLIGenConfig> => {
 	console.log("  Looking for config file...");
 
-	// Create jiti instance with virtual modules for platform stubs
-	const jiti = createJiti(import.meta.url, {
-		interopDefault: true,
-		moduleCache: false,
-		tsconfigPaths: true,
-		virtualModules: createVirtualModules(),
-	});
+	const cwd = options?.cwd || process.cwd();
+	const configFile = await findConfigFile(cwd);
 
-	const { config, configFile } = await loadC12Config<CLIGenConfig>({
-		name: "orpc-cli",
-		cwd: options?.cwd,
-		configFile: "orpc-cli.config",
-		configFileRequired: true,
-		// Use jiti with virtual modules for importing config files
-		import: (id: string) => jiti.import(id),
-	});
-
-	if (!config) {
-		throw new Error("Failed to load config file");
+	if (!configFile) {
+		throw new Error(
+			"Config file not found. Please create orpc-cli.config.ts (or .mts, .js, .mjs)",
+		);
 	}
 
-	console.log(`  ✓ Loaded config from: ${configFile || "default"}`);
-	return config;
+	console.log(`  Found config file: ${configFile}`);
+
+	// Use bundle-require to load the config file
+	const { mod, dependencies } = await bundleRequire<{
+		default?: CLIGenConfig;
+		config?: CLIGenConfig;
+	}>({
+		filepath: configFile,
+		esbuildOptions: {
+			plugins: [createVirtualModulesPlugin()],
+			platform: "node",
+			target: "node20",
+		},
+	});
+
+	// Support both default export and named export
+	const config = mod.default || mod;
+
+	if (!config) {
+		throw new Error("Config file must export a default export or named export");
+	}
+
+	console.log(`  ✓ Loaded config (dependencies: ${dependencies.length})`);
+	return config as CLIGenConfig;
 };
 
 /**
@@ -123,10 +172,7 @@ const generateCmd = command({
 		console.log(`✓ Found ${procedures.length} procedures`);
 
 		console.log("📝 Generating CLI code...");
-		const code = generateCLICode(procedures, {
-			name: "cli",
-			description: "Generated CLI",
-		});
+		const code = generateCLICode(procedures);
 
 		console.log(`📁 Writing to ${outputDir}/index.ts...`);
 		await ensureOutputDir(outputDir);

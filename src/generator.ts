@@ -2,13 +2,11 @@
  * Code generation for CLI commands using ts-morph for type-safe AST generation
  */
 
+import type { JSONSchema7 } from "json-schema";
 import {
 	Project,
-	SourceFile,
-	VariableDeclarationKind,
-	SyntaxKind,
+	VariableDeclarationKind
 } from "ts-morph";
-import type { JSONSchema7 } from "json-schema";
 import {
 	getSchemaProperties,
 	getSchemaTypeHint,
@@ -18,37 +16,47 @@ import {
 import type { ProcedureInfo, SchemaProperty } from "./types.js";
 
 /**
- * Generate the handler function with output and SSE support
+ * Command tree node - can be a leaf (procedure) or a branch (group)
  */
-const generateHandlerFunction = (
-	fullPath: string,
-	hasInput: boolean,
-): string => {
-	const inputArg = hasInput ? "input" : "undefined";
+type CommandNode =
+	| { type: "leaf"; procedure: ProcedureInfo }
+	| { type: "branch"; children: Map<string, CommandNode> };
 
-	return `async (opts) => {
-  const { ...input } = opts;
-  try {
-    const result = await client.${fullPath}(${inputArg}, { context: { options: opts } });
-    
-    // Handle async iterator / SSE streaming
-    if (result && typeof result[Symbol.asyncIterator] === 'function') {
-      let index = 0;
-      for await (const event of result) {
-        const timestamp = new Date().toISOString();
-        console.log(\`[\${timestamp}] [\${++index}] \${JSON.stringify(event)}\`);
-      }
-      return;
-    }
-    
-    // Regular output
-    console.log(JSON.stringify(result, null, 2));
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error(msg);
-    process.exit(1);
-  }
-}`;
+/**
+ * Build command tree recursively to support arbitrary nesting depth
+ */
+const buildCommandTree = (
+	procedures: ProcedureInfo[],
+): Map<string, CommandNode> => {
+	const root = new Map<string, CommandNode>();
+
+	for (const proc of procedures) {
+		const segments = proc.path.split(".");
+		let current = root;
+
+		for (let i = 0; i < segments.length; i++) {
+			const segment = segments[i];
+			const isLast = i === segments.length - 1;
+
+			if (isLast) {
+				// Leaf node - the actual procedure
+				current.set(segment, { type: "leaf", procedure: proc });
+			} else {
+				// Branch node - a command group
+				if (!current.has(segment)) {
+					current.set(segment, { type: "branch", children: new Map() });
+				}
+
+				// biome-ignore lint/style/noNonNullAssertion: Value is inserted above 
+				const node = current.get(segment)!;
+				if (node.type === "branch") {
+					current = node.children;
+				}
+			}
+		}
+	}
+
+	return root;
 };
 
 /**
@@ -77,7 +85,15 @@ const generateOptionExpression = (
 	}
 
 	if (prop.defaultValue !== undefined) {
-		return `${base}.default("${String(prop.defaultValue)}")`;
+		// Output default value with proper type (no quotes for numbers and booleans)
+		if (type === "number" || type === "integer") {
+			return `${base}.default(${Number(prop.defaultValue)})`;
+		} else if (type === "boolean") {
+			return `${base}.default(${prop.defaultValue === true})`;
+		} else {
+			// strings and enums
+			return `${base}.default("${String(prop.defaultValue)}")`;
+		}
 	}
 
 	if (prop.required) {
@@ -114,8 +130,9 @@ const generateOptionsObject = (properties: SchemaProperty[]): string => {
 						`    ${fullKey}: string("${fullKey}").desc("${baseDesc} (repeatable)"),`,
 					);
 				} else {
+					// Arrays default to empty array (no default needed for repeatable options)
 					lines.push(
-						`    ${fullKey}: string("${fullKey}").desc("${baseDesc} (repeatable)").default(""),`,
+						`    ${fullKey}: string("${fullKey}").desc("${baseDesc} (repeatable)"),`,
 					);
 				}
 			}
@@ -130,51 +147,13 @@ const generateOptionsObject = (properties: SchemaProperty[]): string => {
 };
 
 /**
- * Build command tree recursively
- */
-const buildCommandTree = (
-	procedures: ProcedureInfo[],
-	parentPath = "",
-): {
-	directCommands: ProcedureInfo[];
-	groups: Map<string, ProcedureInfo[]>;
-} => {
-	const groups = new Map<string, ProcedureInfo[]>();
-	const directCommands: ProcedureInfo[] = [];
-
-	for (const proc of procedures) {
-		const relativePath = parentPath
-			? proc.path.slice(parentPath.length + 1)
-			: proc.path;
-		const segments = relativePath.split(".");
-
-		if (segments.length === 1) {
-			directCommands.push(proc);
-		} else {
-			const groupName = segments[0];
-			if (!groups.has(groupName)) {
-				groups.set(groupName, []);
-			}
-			groups.get(groupName)!.push(proc);
-		}
-	}
-
-	return { directCommands, groups };
-};
-
-/**
- * Generate full CLI code using ts-morph
+ * Generate the full CLI code using ts-morph
  */
 export const generateCLICode = (
 	procedures: ProcedureInfo[],
-	config: { name: string; description?: string; version?: string },
 ): string => {
 	const project = new Project({
 		useInMemoryFileSystem: true,
-		compilerOptions: {
-			module: SyntaxKind.ESNextModule,
-			target: SyntaxKind.ESNext,
-		},
 	});
 
 	const sourceFile = project.createSourceFile("generated.ts");
@@ -188,7 +167,43 @@ export const generateCLICode = (
 		namedImports: ["command", "string", "number", "boolean"],
 	});
 
-	// Create buildCommands as a variable instead of function
+	// Add processOutput helper function
+	sourceFile.addFunction({
+		name: "processOutput",
+		isExported: false,
+		parameters: [{ name: "result", type: "unknown" }],
+		returnType: "Promise<void>",
+		isAsync: true,
+		statements: `
+	// Handle async iterator / SSE streaming
+	if (result && typeof (result as AsyncIterable<unknown>)[Symbol.asyncIterator] === 'function') {
+		let index = 0;
+		for await (const event of result as AsyncIterable<unknown>) {
+			const timestamp = new Date().toISOString();
+			console.log(\`[\${timestamp}] [\${++index}] \${JSON.stringify(event)}\`);
+		}
+		return;
+	}
+
+	// Regular output
+	console.log(JSON.stringify(result, null, 2));
+	`,
+	});
+
+	// Add handleError helper function
+	sourceFile.addFunction({
+		name: "handleError",
+		isExported: false,
+		parameters: [{ name: "error", type: "unknown" }],
+		returnType: "never",
+		statements: `
+	const msg = error instanceof Error ? error.message : String(error);
+	console.error(msg);
+	process.exit(1);
+	`,
+	});
+
+	// Create buildCommands as a variable
 	sourceFile.addVariableStatement({
 		declarationKind: VariableDeclarationKind.Const,
 		declarations: [
@@ -199,47 +214,18 @@ export const generateCLICode = (
 					writer.write("(client) => {");
 
 					// Build command tree
-					const { directCommands, groups } = buildCommandTree(procedures);
-					const allTopLevel: string[] = [];
+					const tree = buildCommandTree(procedures);
+					const topLevelVars: string[] = [];
 
-					// Generate leaf commands
-					for (const proc of directCommands) {
-						const varName = proc.path.replace(/\./g, "_");
-						const commandName = proc.path;
-						const hasInput =
-							proc.inputSchema?.properties &&
-							Object.keys(proc.inputSchema.properties).length > 0;
-
-						let optionsCode = "";
-						if (hasInput) {
-							const properties = getSchemaProperties(proc.inputSchema!);
-							optionsCode = generateOptionsObject(properties);
-						}
-
-						const handler = generateHandlerFunction(proc.path, hasInput);
-
-						writer.write(`
-  const ${varName} = command({
-    name: "${commandName}",
-    desc: "${proc.path}",
-    options: {
-${optionsCode}
-    },
-    handler: ${handler},
-  });`);
-
-						allTopLevel.push(varName);
-					}
-
-					// Generate group commands
-					for (const [groupName, groupProcs] of groups) {
-						const fullPath = groupName;
-						const groupVarName = fullPath.replace(/\./g, "_");
-
-						// Generate nested commands first
-						for (const proc of groupProcs) {
-							const varName = proc.path.replace(/\./g, "_");
-							const nestedCommandName = proc.path.split(".").pop() || proc.path;
+					// Generate commands recursively
+					const generateCommands = (
+						node: CommandNode,
+						varName: string,
+						commandName: string,
+						desc: string,
+					): string => {
+						if (node.type === "leaf") {
+							const proc = node.procedure;
 							const hasInput =
 								proc.inputSchema?.properties &&
 								Object.keys(proc.inputSchema.properties).length > 0;
@@ -250,37 +236,77 @@ ${optionsCode}
 								optionsCode = generateOptionsObject(properties);
 							}
 
-							const handler = generateHandlerFunction(proc.path, hasInput);
+							const inputArg = hasInput ? "input" : "undefined";
 
-							writer.write(`
+							return `
   const ${varName} = command({
-    name: "${nestedCommandName}",
-    desc: "${proc.path}",
+    name: "${commandName}",
+    desc: "${desc}",
     options: {
 ${optionsCode}
     },
-    handler: ${handler},
-  });`);
+    handler: async (opts) => {
+      const { ...input } = opts;
+      try {
+        const result = await client.${proc.path}(${inputArg}, { context: { options: opts } });
+        await processOutput(result);
+      } catch (error) {
+        handleError(error);
+      }
+    },
+  });`;
+						} else {
+							// Branch node - generate subcommands recursively
+							const childVars: string[] = [];
+							let childCode = "";
+
+							for (const [childName, childNode] of node.children) {
+								const childVarName = `${varName}_${childName}`;
+								const childCommandName = childName;
+								let childDesc: string;
+								if (childNode.type === "leaf") {
+									childDesc = childNode.procedure.path;
+								} else {
+									childDesc = `${childName} commands`;
+								}
+
+								childCode += generateCommands(
+									childNode,
+									childVarName,
+									childCommandName,
+									childDesc,
+								);
+								childVars.push(childVarName);
+							}
+
+							return `
+${childCode}
+  const ${varName} = command({
+    name: "${commandName}",
+    desc: "${desc}",
+    subcommands: [${childVars.join(", ")}],
+  });`;
+						}
+					};
+
+					// Generate all top-level commands
+					for (const [name, node] of tree) {
+						const varName = name;
+						let desc: string;
+						if (node.type === "leaf") {
+							desc = node.procedure.path;
+						} else {
+							desc = `${name} commands`;
 						}
 
-						// Create group command
-						const commandNames = groupProcs
-							.map((p) => p.path.replace(/\./g, "_"))
-							.join(", ");
-						writer.write(`
-  const ${groupVarName} = command({
-    name: "${groupName}",
-    desc: "${groupName} commands",
-    subcommands: [${commandNames}],
-  });`);
-
-						allTopLevel.push(groupVarName);
+						writer.write(generateCommands(node, varName, name, desc));
+						topLevelVars.push(varName);
 					}
 
 					// Return statement
 					writer.write(`
 
-  return [${allTopLevel.join(", ")}];
+  return [${topLevelVars.join(", ")}];
 }`);
 				},
 			},

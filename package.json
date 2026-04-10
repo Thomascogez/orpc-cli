@@ -43,14 +43,6 @@
 	"author": "",
 	"license": "MIT",
 	"packageManager": "pnpm@10.33.0",
-	"dependencies": {
-		"c12": "4.0.0-beta.4",
-		"ts-morph": "^27.0.2"
-	},
-	"peerDependencies": {
-		"@orpc/client": "^1.0.0",
-		"@orpc/server": "^1.0.0"
-	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.10",
 		"@drizzle-team/brocli": "^0.12.0",
@@ -59,7 +51,9 @@
 		"@standard-schema/spec": "^1.1.0",
 		"@types/json-schema": "^7.0.15",
 		"@types/node": "^25.5.2",
-		"jiti": "github:unjs/jiti",
+		"bundle-require": "^5.1.0",
+		"esbuild": "^0.25.0",
+		"ts-morph": "^27.0.2",
 		"tsdown": "^0.21.7",
 		"tsx": "^4.21.0",
 		"typescript": "^6.0.2",
