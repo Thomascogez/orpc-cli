@@ -1,6 +1,6 @@
 {
 	"name": "@thomas.ca/orpc-cli",
-	"version": "0.0.2",
+	"version": "0.0.3",
 	"description": "Generate command-line interfaces from oRPC routers and clients using Standard Schema",
 	"type": "module",
 	"main": "./dist/index.js",
