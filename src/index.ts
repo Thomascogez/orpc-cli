@@ -35,7 +35,3 @@ export type {
 	SchemaProperty,
 } from "./types.js";
 
-// No output utilities exported - generated code handles output inline
-
-// Version
-export const version = "1.0.0";

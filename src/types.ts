@@ -1,7 +1,3 @@
-/**
- * Core types for orpc-cli
- */
-
 import type { JSONSchema7 } from "json-schema";
 
 /**

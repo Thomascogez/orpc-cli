@@ -15,14 +15,11 @@ import { generateCLICode } from "./generator.js";
 import { introspectRouterRuntime } from "./introspect.js";
 import type { CLIGenConfig } from "./types.js";
 
-/**
- * Create esbuild plugin for virtual modules (platform-specific stubs)
- */
+
 const createVirtualModulesPlugin = (): esbuild.Plugin => {
 	return {
 		name: "virtual-modules",
 		setup(build) {
-			// Cloudflare Workers stub
 			build.onResolve({ filter: /^cloudflare:workers$/ }, (args) => ({
 				path: args.path,
 				namespace: "virtual-module",
@@ -52,7 +49,6 @@ const createVirtualModulesPlugin = (): esbuild.Plugin => {
 				}),
 			);
 
-			// Deno stub (if needed in future)
 			build.onResolve({ filter: /^deno$/ }, (args) => ({
 				path: args.path,
 				namespace: "virtual-module",
@@ -66,9 +62,7 @@ const createVirtualModulesPlugin = (): esbuild.Plugin => {
 	};
 };
 
-/**
- * Find config file path
- */
+
 const findConfigFile = async (cwd: string): Promise<string | null> => {
 	const configFiles = [
 		"orpc-cli.config.ts",
@@ -88,9 +82,6 @@ const findConfigFile = async (cwd: string): Promise<string | null> => {
 	return null;
 };
 
-/**
- * Load config using bundle-require with TypeScript support and platform module stubbing
- */
 const loadConfig = async (options?: {
 	cwd?: string;
 }): Promise<CLIGenConfig> => {
@@ -131,9 +122,6 @@ const loadConfig = async (options?: {
 	return config as CLIGenConfig;
 };
 
-/**
- * Ensure output directory exists
- */
 const ensureOutputDir = async (outputPath: string): Promise<void> => {
 	try {
 		await fs.mkdir(outputPath, { recursive: true });
@@ -142,9 +130,6 @@ const ensureOutputDir = async (outputPath: string): Promise<void> => {
 	}
 };
 
-/**
- * Generate command
- */
 const generateCmd = command({
 	name: "generate",
 	aliases: ["gen"],
@@ -191,9 +176,6 @@ const generateCmd = command({
 	},
 });
 
-/**
- * Main CLI
- */
 run([generateCmd], {
 	name: "orpc-cli",
 	description: "Generate CLI from oRPC router",
